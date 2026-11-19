@@ -32,3 +32,21 @@
 - La funció `neonText()` aprofita `shadowBlur` del canvas per obtenir l'efecte de brillantor neó.
 
 **Captura:** `docs/captures/pas1.png`
+
+---
+
+## Pas 2 – Nau del jugador i fons d'estrelles
+
+**Funcionalitat implementada:** la nau del jugador dibuixada amb línies neó i una flama de motor que parpelleja; moviment amb fletxes o WASD; fons d'estrelles amb 3 capes de paral·laxi i una graella *synthwave* en perspectiva que es desplaça. També s'ha afegit un **mode demo** (`index.html?demo`) on un pilot automàtic juga sol.
+
+**Prompt utilitzat:**
+> Afegeix la nau del jugador a game.js: dibuixa-la amb línies neó cian amb shadowBlur, una cabina rosa i una flama de motor taronja que parpellegi. S'ha de moure amb les fletxes i amb WASD, sense sortir del canvas, normalitzant la velocitat en diagonal i amb una petita inclinació quan es mou de costat. Afegeix també un fons d'estrelles amb 3 capes de paral·laxi a diferents velocitats i una graella synthwave en perspectiva a la part de baix. Finalment, afegeix un mode demo activable amb ?demo a la URL on la nau es mogui sola i dispari, per poder fer captures del joc.
+
+**Decisions i característiques interessants:**
+- **Paral·laxi:** cada capa d'estrelles té velocitat, mida i opacitat diferents; això dona sensació de profunditat amb molt poc codi.
+- **Normalització diagonal:** en moure's en diagonal es multiplica per `√½` perquè la nau no vagi més ràpida que en línia recta.
+- La inclinació de la nau s'interpola (`tilt += (objectiu - tilt) * dt * 10`) per tenir un moviment suau en lloc d'un canvi brusc.
+- La graella usa una funció quadràtica (`t*t`) perquè les línies horitzontals s'acostin entre elles prop de l'horitzó, simulant perspectiva.
+- El mode demo ens ha permès fer captures automàtiques amb Edge en mode *headless*.
+
+**Captura:** `docs/captures/pas2.png`
