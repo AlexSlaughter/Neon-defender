@@ -38,7 +38,13 @@ let demoTime = 0;
 
 function demoPilot(dt) {
   demoTime += dt;
-  const targetX = W / 2 + Math.sin(demoTime * 0.9) * (W / 2 - 60);
+  // Apunta al boss o a l'enemic més proper; si no n'hi ha, patrulla
+  let targetX = W / 2 + Math.sin(demoTime * 0.9) * (W / 2 - 60);
+  if (typeof boss !== 'undefined' && boss && !boss.entering) targetX = boss.x;
+  else if (enemies.length) {
+    const visible = enemies.filter(e => e.y > 0);
+    if (visible.length) targetX = visible.reduce((a, e) => (e.y > a.y ? e : a)).x;
+  }
   keys.ArrowLeft = player.x > targetX + 10;
   keys.ArrowRight = player.x < targetX - 10;
   keys.Space = true;
@@ -163,13 +169,18 @@ const FIRE_RATE = 0.16;  // segons entre dispars
 
 function playerShoot() {
   bullets.push({ x: player.x, y: player.y - 20, vx: 0, vy: -720, r: 3, color: '#00f0ff' });
+  if (powers.triple > 0) {
+    bullets.push({ x: player.x - 8, y: player.y - 12, vx: -170, vy: -700, r: 3, color: '#3bff8a' });
+    bullets.push({ x: player.x + 8, y: player.y - 12, vx: 170, vy: -700, r: 3, color: '#3bff8a' });
+  }
+  if (typeof sfx !== 'undefined') sfx.shoot();
 }
 
 function updateBullets(dt) {
   fireCooldown -= dt;
-  if (keys.Space && fireCooldown <= 0) {
+  if (keys.Space && fireCooldown <= 0 && game.state === 'playing') {
     playerShoot();
-    fireCooldown = FIRE_RATE;
+    fireCooldown = powers.rapid > 0 ? FIRE_RATE * 0.5 : FIRE_RATE;
   }
   for (const list of [bullets, enemyBullets]) {
     for (let i = list.length - 1; i >= 0; i--) {
@@ -208,26 +219,279 @@ const ENEMY_TYPES = {
   tank:   { r: 24, hp: 6, speed: 45,  color: '#ff5a2b', score: 400, shoots: true },
 };
 const enemies = [];
-let spawnTimer = 1;
+let difficulty = 1; // multiplicador de velocitat, creix a cada cicle de 5 onades
 
 function spawnEnemy(type, x = rand(40, W - 40), y = -30) {
   const def = ENEMY_TYPES[type];
+  const extraHp = Math.floor(difficulty - 1) * 2;
   enemies.push({
-    type, x, y, r: def.r, hp: def.hp, maxHp: def.hp,
-    color: def.color, score: def.score, speed: def.speed,
+    type, x, y, r: def.r, hp: def.hp + extraHp, maxHp: def.hp + extraHp,
+    color: def.color, score: def.score, speed: def.speed * difficulty,
     t: rand(0, 10), baseX: x, vx: 0, vy: def.speed,
-    shootTimer: rand(1, 2.5), hitFlash: 0,
+    shootTimer: rand(1, 2.5) / difficulty, hitFlash: 0,
   });
 }
 
-function updateEnemies(dt) {
-  spawnTimer -= dt;
-  if (spawnTimer <= 0) {
-    const types = ['drone', 'drone', 'zigzag', 'diver', 'tank'];
-    spawnEnemy(types[Math.floor(Math.random() * types.length)]);
-    spawnTimer = rand(0.5, 1.3);
-  }
+// ---------- Sistema d'onades ----------
+// Cada onada és una cua de "grups" que van apareixent. Cada 5a onada hi ha un boss.
+const wave = { n: 0, queue: [], timer: 0, banner: 0, pause: 0 };
 
+function buildWave(n) {
+  const groups = [];
+  const count = 4 + n * 2;
+  const pool = ['drone'];
+  if (n >= 2) pool.push('zigzag');
+  if (n >= 3) pool.push('diver', 'diver');
+  if (n >= 4) pool.push('tank');
+  for (let i = 0; i < count; i++) {
+    // De tant en tant, una formació en V de drones
+    if (i % 5 === 0) groups.push({ formation: 'V', type: pool.length > 2 && Math.random() < 0.4 ? 'diver' : 'drone' });
+    else groups.push({ type: pool[Math.floor(Math.random() * pool.length)] });
+  }
+  return groups;
+}
+
+function startWave(n) {
+  wave.n = n;
+  wave.banner = 2.5;
+  wave.timer = 1.5;
+  difficulty = 1 + Math.floor((n - 1) / 5) * 0.3;
+  if (n % 5 === 0) {
+    wave.queue = [];
+    spawnBoss();
+  } else {
+    wave.queue = buildWave(((n - 1) % 5) + 1 + Math.floor((n - 1) / 5));
+  }
+}
+
+function updateWaves(dt) {
+  wave.banner = Math.max(0, wave.banner - dt);
+  if (wave.pause > 0) {
+    wave.pause -= dt;
+    if (wave.pause <= 0) startWave(wave.n + 1);
+    return;
+  }
+  wave.timer -= dt;
+  if (wave.queue.length && wave.timer <= 0) {
+    const g = wave.queue.shift();
+    if (g.formation === 'V') {
+      const cx = rand(120, W - 120);
+      for (let k = -2; k <= 2; k++) spawnEnemy(g.type, cx + k * 36, -30 - Math.abs(k) * 30);
+      wave.timer = 1.6;
+    } else {
+      spawnEnemy(g.type);
+      wave.timer = rand(0.45, 1.1) / difficulty;
+    }
+  }
+  // Onada superada: no queda res a la cua, ni enemics, ni boss
+  if (!wave.queue.length && !enemies.length && !boss && game.state === 'playing') {
+    wave.pause = 2;
+    floatingTexts.push({ text: 'ONADA SUPERADA!', x: W / 2, y: H / 2, life: 1.8, color: '#00f0ff', size: 32 });
+  }
+}
+
+// ---------- Power-ups ----------
+const POWERUPS = {
+  triple: { letter: 'T', color: '#3bff8a', label: 'TRIPLE DISPAR' },
+  rapid:  { letter: 'R', color: '#ffe02b', label: 'FOC RÀPID' },
+  shield: { letter: 'S', color: '#2b9bff', label: 'ESCUT' },
+  life:   { letter: '+', color: '#ff2bd6', label: 'VIDA EXTRA' },
+};
+const powerups = [];
+const powers = { triple: 0, rapid: 0, shield: false };
+
+function maybeDropPowerup(x, y, chance) {
+  if (Math.random() > chance) return;
+  const types = ['triple', 'triple', 'rapid', 'rapid', 'shield', 'shield', 'life'];
+  const type = types[Math.floor(Math.random() * types.length)];
+  powerups.push({ type, x, y, t: 0 });
+}
+
+function updatePowerups(dt) {
+  powers.triple = Math.max(0, powers.triple - dt);
+  powers.rapid = Math.max(0, powers.rapid - dt);
+  for (let i = powerups.length - 1; i >= 0; i--) {
+    const p = powerups[i];
+    p.t += dt;
+    p.y += 80 * dt;
+    p.x += Math.sin(p.t * 3) * 30 * dt;
+    if (hit(p, 14, player, PLAYER_R + 6)) {
+      applyPowerup(p.type);
+      powerups.splice(i, 1);
+    } else if (p.y > H + 20) {
+      powerups.splice(i, 1);
+    }
+  }
+}
+
+function applyPowerup(type) {
+  const def = POWERUPS[type];
+  if (type === 'triple') powers.triple = 10;
+  if (type === 'rapid') powers.rapid = 10;
+  if (type === 'shield') powers.shield = true;
+  if (type === 'life') game.lives = Math.min(game.lives + 1, 5);
+  floatingTexts.push({ text: def.label, x: player.x, y: player.y - 40, life: 1.4, color: def.color });
+  spawnParticles(player.x, player.y, def.color, 25, 200, 0.6, 3);
+  if (typeof sfx !== 'undefined') sfx.powerup();
+}
+
+function drawPowerups() {
+  for (const p of powerups) {
+    const def = POWERUPS[p.type];
+    const pulse = 1 + Math.sin(p.t * 8) * 0.12;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(pulse, pulse);
+    ctx.strokeStyle = def.color;
+    ctx.fillStyle = def.color + '33';
+    ctx.shadowColor = def.color;
+    ctx.shadowBlur = 18;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    neonText(def.letter, p.x, p.y + 1, 15, def.color);
+  }
+}
+
+// ---------- Boss ----------
+let boss = null;
+
+function spawnBoss() {
+  const hp = 80 + Math.round((difficulty - 1) / 0.3) * 40;
+  boss = { x: W / 2, y: -90, targetY: 120, r: 54, hp, maxHp: hp, t: 0, attackTimer: 1.5, pattern: 0, hitFlash: 0, enraged: false, entering: true };
+  floatingTexts.push({ text: '⚠ ALERTA: BOSS ⚠', x: W / 2, y: H / 2 - 40, life: 2.5, color: '#ff3b6b', size: 36 });
+  if (typeof sfx !== 'undefined') sfx.alarm();
+}
+
+function updateBoss(dt) {
+  if (!boss) return;
+  const b = boss;
+  b.t += dt;
+  b.hitFlash = Math.max(0, b.hitFlash - dt);
+  if (b.entering) { // entrada des de dalt
+    b.y += 60 * dt;
+    if (b.y >= b.targetY) { b.entering = false; b.t = 0; }
+    return;
+  }
+  // A meitat de vida s'enfada: més ràpid i més agressiu
+  if (!b.enraged && b.hp < b.maxHp / 2) {
+    b.enraged = true;
+    explode(b.x, b.y, '#ff3b6b', true);
+    floatingTexts.push({ text: 'MODE FÚRIA!', x: b.x, y: b.y + 80, life: 1.5, color: '#ff3b6b', size: 28 });
+  }
+  const speed = b.enraged ? 1.6 : 0.9;
+  b.x = W / 2 + Math.sin(b.t * speed) * (W / 2 - 90);
+  b.y = b.targetY + Math.sin(b.t * speed * 2) * 25;
+
+  b.attackTimer -= dt;
+  if (b.attackTimer <= 0) {
+    b.pattern = (b.pattern + 1) % 3;
+    if (b.pattern === 0) {
+      // Anell de projectils en totes direccions
+      const n = b.enraged ? 22 : 14;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + b.t;
+        enemyBullets.push({ x: b.x, y: b.y, vx: Math.cos(a) * 180, vy: Math.sin(a) * 180, r: 6, color: '#ff3b6b' });
+      }
+    } else if (b.pattern === 1) {
+      // Ventall dirigit al jugador
+      const base = Math.atan2(player.y - b.y, player.x - b.x);
+      for (let i = -2; i <= 2; i++) {
+        const a = base + i * 0.16;
+        enemyBullets.push({ x: b.x, y: b.y + 30, vx: Math.cos(a) * 280, vy: Math.sin(a) * 280, r: 5, color: '#ffe02b' });
+      }
+    } else {
+      // Invoca drones d'escorta
+      spawnEnemy('drone', b.x - 70, b.y);
+      spawnEnemy('drone', b.x + 70, b.y);
+      if (b.enraged) spawnEnemy('diver', b.x, b.y + 40);
+    }
+    b.attackTimer = b.enraged ? 1.1 : 1.8;
+    if (typeof sfx !== 'undefined') sfx.bossShot();
+  }
+}
+
+function damageBoss(amount) {
+  boss.hp -= amount;
+  boss.hitFlash = 0.06;
+  if (boss.hp <= 0) {
+    const { x, y } = boss;
+    addScore(5000, x, y);
+    // Cadena d'explosions
+    for (let i = 0; i < 6; i++) {
+      setTimeout(() => explode(x + rand(-50, 50), y + rand(-40, 40), i % 2 ? '#ff2bd6' : '#ffe02b', true), i * 140);
+    }
+    for (let i = 0; i < 3; i++) maybeDropPowerup(x + (i - 1) * 40, y, 1);
+    boss = null;
+    enemyBullets.length = 0;
+  }
+}
+
+function drawBoss() {
+  if (!boss) return;
+  const b = boss;
+  const color = b.hitFlash > 0 ? '#ffffff' : (b.enraged ? '#ff3b6b' : '#ff2bd6');
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 25;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  // Anell exterior que gira
+  ctx.save();
+  ctx.rotate(b.t * (b.enraged ? 2 : 0.8));
+  ctx.beginPath();
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    const r = i % 2 ? b.r : b.r * 0.78;
+    ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  ctx.closePath();
+  ctx.fillStyle = color + '18';
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+  // Anell interior en sentit contrari
+  ctx.save();
+  ctx.rotate(-b.t * 1.5);
+  ctx.strokeStyle = '#00f0ff';
+  ctx.shadowColor = '#00f0ff';
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    ctx.lineTo(Math.cos(a) * 30, Math.sin(a) * 30);
+  }
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+  // Ull que segueix el jugador
+  const look = Math.atan2(player.y - b.y, player.x - b.x);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(0, 0, 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(Math.cos(look) * 6, Math.sin(look) * 6, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Barra de vida
+  const bw = 400;
+  ctx.save();
+  ctx.strokeStyle = '#ff2bd6';
+  ctx.shadowColor = '#ff2bd6';
+  ctx.shadowBlur = 10;
+  ctx.strokeRect(W / 2 - bw / 2, 52, bw, 10);
+  ctx.fillStyle = b.enraged ? '#ff3b6b' : '#ff2bd6';
+  ctx.fillRect(W / 2 - bw / 2, 52, bw * Math.max(0, b.hp / b.maxHp), 10);
+  ctx.restore();
+}
+
+function updateEnemies(dt) {
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
     e.t += dt;
@@ -409,9 +673,13 @@ function resetGame() {
   floatingTexts.length = 0;
   particles.length = 0;
   shockwaves.length = 0;
+  powerups.length = 0;
+  Object.assign(powers, { triple: 0, rapid: 0, shield: false });
+  boss = null;
   player.x = W / 2;
   player.y = H - 80;
-  spawnTimer = 1;
+  wave.pause = 0;
+  startWave(1);
 }
 
 // ---------- Col·lisions (cercle contra cercle) ----------
@@ -431,11 +699,20 @@ function killEnemy(index) {
   const e = enemies[index];
   addScore(e.score, e.x, e.y);
   explode(e.x, e.y, e.color, e.type === 'tank');
+  maybeDropPowerup(e.x, e.y, e.type === 'tank' ? 0.5 : 0.08);
   enemies.splice(index, 1);
 }
 
 function damagePlayer() {
   if (game.invuln > 0) return;
+  if (powers.shield) {
+    // L'escut absorbeix el cop
+    powers.shield = false;
+    game.invuln = 1;
+    shockwaves.push({ x: player.x, y: player.y, r: 4, maxR: 90, life: 1, color: '#2b9bff' });
+    if (typeof sfx !== 'undefined') sfx.shieldBreak();
+    return;
+  }
   game.lives--;
   game.invuln = 2;
   game.combo = 0;
@@ -450,6 +727,12 @@ function handleCollisions() {
   // Dispars del jugador contra enemics
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i];
+    if (boss && hit(b, b.r, boss, boss.r)) {
+      bullets.splice(i, 1);
+      spawnParticles(b.x, b.y, '#ff2bd6', 4, 150, 0.25, 2);
+      damageBoss(1);
+      continue;
+    }
     for (let j = enemies.length - 1; j >= 0; j--) {
       const e = enemies[j];
       if (hit(b, b.r, e, e.r)) {
@@ -476,6 +759,7 @@ function handleCollisions() {
       damagePlayer();
     }
   }
+  if (boss && hit(boss, boss.r, player, PLAYER_R)) damagePlayer();
 }
 
 function updateFloatingTexts(dt) {
@@ -502,10 +786,42 @@ function drawHUD() {
   if (mult > 1) neonText(`COMBO x${mult}`, W / 2, 26, 20, '#ffe02b');
 
   for (const f of floatingTexts) {
-    ctx.globalAlpha = Math.max(0, f.life);
-    neonText(f.text, f.x, f.y, 16, f.color);
+    ctx.globalAlpha = Math.min(1, Math.max(0, f.life));
+    neonText(f.text, f.x, f.y, f.size || 16, f.color);
   }
   ctx.globalAlpha = 1;
+
+  // Onada actual i power-ups actius
+  neonText(`ONADA ${wave.n}`, 20, H - 22, 16, '#c9b8ff', 'left');
+  let px = W - 20;
+  for (const [key, label] of [['triple', 'T'], ['rapid', 'R']]) {
+    if (powers[key] > 0) {
+      neonText(`${label} ${Math.ceil(powers[key])}s`, px, H - 22, 16, POWERUPS[key].color, 'right');
+      px -= 80;
+    }
+  }
+  if (powers.shield) neonText('ESCUT', px, H - 22, 16, POWERUPS.shield.color, 'right');
+
+  if (wave.banner > 0) {
+    ctx.globalAlpha = Math.min(1, wave.banner);
+    const isBoss = wave.n % 5 === 0;
+    neonText(isBoss ? `ONADA ${wave.n} · BOSS` : `ONADA ${wave.n}`, W / 2, H / 2 - 90, 44, isBoss ? '#ff3b6b' : '#00f0ff');
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawShield() {
+  if (!powers.shield || game.state !== 'playing') return;
+  ctx.save();
+  ctx.strokeStyle = '#2b9bff';
+  ctx.shadowColor = '#2b9bff';
+  ctx.shadowBlur = 18;
+  ctx.lineWidth = 2;
+  ctx.globalAlpha = 0.6 + Math.sin(performance.now() / 120) * 0.3;
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, 28, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawGameOver() {
@@ -540,7 +856,10 @@ function update(dt) {
 
   updatePlayer(dt);
   updateBullets(dt);
+  updateWaves(dt);
   updateEnemies(dt);
+  updateBoss(dt);
+  updatePowerups(dt);
   handleCollisions();
   updateFloatingTexts(dt);
 }
@@ -555,11 +874,14 @@ function draw() {
   drawGrid(gridDt);
   drawStars();
   enemies.forEach(drawEnemy);
+  drawBoss();
+  drawPowerups();
   drawBullets();
   // La nau parpelleja mentre és invulnerable
   if (game.state === 'playing' && (game.invuln <= 0 || Math.floor(game.invuln * 10) % 2 === 0)) {
     drawShip(player.x, player.y, player.tilt);
   }
+  drawShield();
   drawEffects();
   ctx.restore();
 
@@ -578,6 +900,9 @@ function loop(now) {
   draw();
   requestAnimationFrame(loop);
 }
+
+// En mode demo, ?wave=N comença directament a l'onada N (per provar el boss: ?demo&wave=5)
+startWave(DEMO ? Number(new URLSearchParams(location.search).get('wave')) || 1 : 1);
 
 // En mode demo, ?warp=N simula N segons de joc abans de començar (útil per a captures)
 const WARP = DEMO ? Number(new URLSearchParams(location.search).get('warp')) || 0 : 0;

@@ -117,3 +117,29 @@ Ara `index.html?demo&warp=7` mostra el joc tal com estaria després de 7 segons.
 - Aquests efectes (*game feel* o *juice*) no canvien la jugabilitat però fan que el joc sigui molt més satisfactori.
 
 **Captura:** `docs/captures/pas5.png`
+
+---
+
+## Pas 6 – Onades, power-ups i boss final
+
+**Funcionalitat implementada:**
+- **Onades progressives:** cada onada té més enemics i va desbloquejant tipus nous (onada 1 només drones, 2 afegeix zigzag, 3 diver, 4 tank). De tant en tant apareixen **formacions en V**. Es mostra un rètol "ONADA N" en començar i "ONADA SUPERADA!" en acabar.
+- **Boss cada 5 onades:** una nau gegant amb dos anells que giren en sentits contraris i un **ull que segueix el jugador**. Té una barra de vida i 3 patrons d'atac que s'alternen: anell de projectils en totes direccions, ventall de 5 dispars dirigits i invocació de drones d'escorta. A meitat de vida entra en **MODE FÚRIA** (més ràpid, més projectils, canvia de color). En morir provoca una cadena d'explosions i deixa caure 3 power-ups.
+- **Power-ups** que cauen dels enemics (8% de probabilitat, 50% els tanks): **T** triple dispar (10 s), **R** foc ràpid (10 s), **S** escut que absorbeix un cop i **+** vida extra (màxim 5).
+- **Dificultat creixent:** després de cada boss, els enemics són un 30% més ràpids, tenen més vida i disparen més sovint.
+
+**Prompt utilitzat:**
+> Substitueix l'aparició aleatòria d'enemics per un sistema d'onades: cada onada és una cua de grups que apareixen amb un temps entre ells, amb més enemics a cada onada i desbloquejant tipus nous progressivament, incloent formacions en V. Mostra un rètol gran amb el número d'onada. Cada 5 onades ha d'aparèixer un boss gran amb estil neó, anells que giren i un ull que segueixi el jugador, amb barra de vida i 3 patrons d'atac alternats (anell de bales, ventall dirigit i invocar drones). Quan baixi de la meitat de vida que entri en mode fúria. Afegeix power-ups que caiguin dels enemics: triple dispar, foc ràpid, escut i vida extra, amb una lletra dins d'un cercle que palpiti. Després de cada boss, augmenta la dificultat.
+
+**Problemes trobats i solucions:**
+1. **El boss no atacava.** Provant-ho al navegador vam veure que la barra de vida baixava però el boss no disparava mai. El codi feia `if (b.y < b.targetY) { entrar; return; }`, però el boss oscil·la amunt i avall al voltant de `targetY`, de manera que la meitat del temps es tornava a considerar "entrant" i sortia de la funció abans d'atacar. Prompt de correcció:
+   > El boss no ataca mai i es queda enganxat. Crec que és perquè quan oscil·la per sobre de targetY torna a entrar al bloc d'entrada. Fes servir un booleà "entering" que només s'apagui un cop.
+2. **El combat era massa llarg** (120 punts de vida) i el pilot automàtic no apuntava. Es va reduir la vida a 80 i es va millorar el mode demo perquè apunti al boss o a l'enemic més proper.
+3. Per provar el boss sense haver de jugar 4 onades, s'ha afegit el paràmetre `?demo&wave=5`.
+
+**Decisions i característiques interessants:**
+- Les onades són **dades** (una cua de grups) i no codi: `buildWave()` genera la llista i `updateWaves()` la va consumint. Això fa fàcil equilibrar la dificultat.
+- El boss té una **màquina d'estats senzilla** (entrada → atac → fúria) i alterna patrons amb `pattern = (pattern + 1) % 3`.
+- Per comprovar el combat sencer es va executar la simulació des de la consola del navegador (`update(1/60)` en un bucle de 7.200 iteracions = 2 minuts de joc) i registrar la vida del boss cada 10 segons. Així es va verificar que el boss mor i comença l'onada 6 amb dificultat 1,3.
+
+**Captures:** `docs/captures/pas6.png` (boss atacant), `docs/captures/pas6b.png` (rètol d'onada), `docs/captures/pas6c.png` (Game Over durant el combat amb el boss en mode fúria)
