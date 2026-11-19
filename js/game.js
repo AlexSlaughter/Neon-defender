@@ -47,7 +47,7 @@ canvas.addEventListener('pointerdown', e => {
   if (game.state === 'paused') { game.state = 'playing'; sfx.pauseMusic(false); return; }
   if (game.state !== 'playing') return;
   touch = { id: e.pointerId, ...toCanvas(e) };
-  canvas.setPointerCapture(e.pointerId);
+  try { canvas.setPointerCapture(e.pointerId); } catch { /* punter no actiu: s'ignora */ }
 });
 
 canvas.addEventListener('pointermove', e => {
