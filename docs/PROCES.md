@@ -50,3 +50,34 @@
 - El mode demo ens ha permès fer captures automàtiques amb Edge en mode *headless*.
 
 **Captura:** `docs/captures/pas2.png`
+
+---
+
+## Pas 3 – Dispars i enemics
+
+**Funcionalitat implementada:** el jugador dispara làsers amb `Espai` (amb cadència limitada) i apareixen 4 tipus d'enemics amb formes i comportaments diferents:
+
+| Enemic | Forma | Comportament | Vida | Punts |
+|---|---|---|---|---|
+| Drone | Hexàgon rosa que gira | Baixa recte | 1 | 100 |
+| Zigzag | Rombe lila | Baixa fent ziga-zaga i dispara | 2 | 150 |
+| Diver | Triangle groc | Baixa i es llança en picat cap al jugador | 1 | 200 |
+| Tank | Octàgon taronja | Lent, resistent i dispara | 6 | 400 |
+
+Els enemics que disparen apunten els projectils cap a la posició del jugador.
+
+**Prompt utilitzat:**
+> Afegeix dispars: amb la tecla Espai la nau dispara làsers cian cap amunt amb un temps mínim entre dispars. Després crea un sistema d'enemics amb 4 tipus definits en un objecte de configuració (drone, zigzag, diver i tank), cadascun amb forma geomètrica neó, color, vida, velocitat i punts diferents. El drone baixa recte, el zigzag fa una ona sinusoïdal, el diver baixa i quan arriba a un terç de la pantalla es llança cap al jugador, i el tank és lent i resistent. El zigzag i el tank han de disparar projectils dirigits cap al jugador. Elimina els objectes que surten de la pantalla.
+
+**Problema trobat i solució:** en fer les captures amb Edge *headless* el joc gairebé no avançava, perquè el navegador sense finestra limita `requestAnimationFrame`. Es va demanar a la IA:
+> Les captures en headless surten buides perquè no avancen fotogrames. Afegeix un paràmetre ?warp=N al mode demo que simuli N segons de joc abans del primer dibuix.
+
+Ara `index.html?demo&warp=7` mostra el joc tal com estaria després de 7 segons.
+
+**Decisions i característiques interessants:**
+- Els tipus d'enemic es defineixen en un objecte `ENEMY_TYPES` (configuració separada de la lògica), així afegir-ne un de nou és trivial.
+- Es fa servir `Math.atan2` per calcular l'angle cap al jugador, tant per al picat del *diver* com per als dispars dirigits.
+- Els arrays es recorren **de darrere cap endavant** quan s'eliminen elements amb `splice`, per no saltar-se cap element.
+- `hitFlash` es prepara perquè l'enemic brilli en blanc quan rebi un impacte (s'utilitza al pas 4).
+
+**Captura:** `docs/captures/pas3.png`

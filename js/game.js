@@ -155,6 +155,166 @@ function drawShip(x, y, tilt, color = '#00f0ff') {
   ctx.restore();
 }
 
+// ---------- Projectils ----------
+const bullets = [];      // dispars del jugador
+const enemyBullets = []; // dispars enemics
+let fireCooldown = 0;
+const FIRE_RATE = 0.16;  // segons entre dispars
+
+function playerShoot() {
+  bullets.push({ x: player.x, y: player.y - 20, vx: 0, vy: -720, r: 3, color: '#00f0ff' });
+}
+
+function updateBullets(dt) {
+  fireCooldown -= dt;
+  if (keys.Space && fireCooldown <= 0) {
+    playerShoot();
+    fireCooldown = FIRE_RATE;
+  }
+  for (const list of [bullets, enemyBullets]) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      const b = list[i];
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      if (b.y < -20 || b.y > H + 20 || b.x < -20 || b.x > W + 20) list.splice(i, 1);
+    }
+  }
+}
+
+function drawBullets() {
+  ctx.save();
+  ctx.shadowBlur = 14;
+  for (const b of bullets) {
+    ctx.shadowColor = b.color;
+    ctx.fillStyle = b.color;
+    ctx.fillRect(b.x - 2, b.y - 9, 4, 18);
+  }
+  for (const b of enemyBullets) {
+    ctx.shadowColor = b.color;
+    ctx.fillStyle = b.color;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ---------- Enemics ----------
+// Cada tipus té un comportament i aspecte diferent
+const ENEMY_TYPES = {
+  drone:  { r: 16, hp: 1, speed: 90,  color: '#ff2bd6', score: 100, shoots: false },
+  zigzag: { r: 15, hp: 2, speed: 110, color: '#b44bff', score: 150, shoots: true },
+  diver:  { r: 14, hp: 1, speed: 70,  color: '#ffe02b', score: 200, shoots: false },
+  tank:   { r: 24, hp: 6, speed: 45,  color: '#ff5a2b', score: 400, shoots: true },
+};
+const enemies = [];
+let spawnTimer = 1;
+
+function spawnEnemy(type, x = rand(40, W - 40), y = -30) {
+  const def = ENEMY_TYPES[type];
+  enemies.push({
+    type, x, y, r: def.r, hp: def.hp, maxHp: def.hp,
+    color: def.color, score: def.score, speed: def.speed,
+    t: rand(0, 10), baseX: x, vx: 0, vy: def.speed,
+    shootTimer: rand(1, 2.5), hitFlash: 0,
+  });
+}
+
+function updateEnemies(dt) {
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) {
+    const types = ['drone', 'drone', 'zigzag', 'diver', 'tank'];
+    spawnEnemy(types[Math.floor(Math.random() * types.length)]);
+    spawnTimer = rand(0.5, 1.3);
+  }
+
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    e.t += dt;
+    e.hitFlash = Math.max(0, e.hitFlash - dt);
+
+    switch (e.type) {
+      case 'zigzag':
+        e.y += e.speed * dt;
+        e.x = e.baseX + Math.sin(e.t * 3) * 70;
+        break;
+      case 'diver':
+        // Baixa lentament i, quan és a prop, es llança cap al jugador
+        if (e.y < H * 0.3) {
+          e.y += e.speed * dt;
+        } else {
+          if (!e.dived) {
+            const ang = Math.atan2(player.y - e.y, player.x - e.x);
+            e.vx = Math.cos(ang) * 380;
+            e.vy = Math.sin(ang) * 380;
+            e.dived = true;
+          }
+          e.x += e.vx * dt;
+          e.y += e.vy * dt;
+        }
+        break;
+      default:
+        e.y += e.speed * dt;
+    }
+
+    const def = ENEMY_TYPES[e.type];
+    if (def.shoots && e.y > 0) {
+      e.shootTimer -= dt;
+      if (e.shootTimer <= 0) {
+        const ang = Math.atan2(player.y - e.y, player.x - e.x);
+        enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(ang) * 220, vy: Math.sin(ang) * 220, r: 5, color: '#ff3b6b' });
+        e.shootTimer = rand(1.4, 2.6);
+      }
+    }
+
+    if (e.y > H + 50 || e.x < -60 || e.x > W + 60) enemies.splice(i, 1);
+  }
+}
+
+function drawEnemy(e) {
+  ctx.save();
+  ctx.translate(e.x, e.y);
+  const color = e.hitFlash > 0 ? '#ffffff' : e.color;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color + '22';
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 16;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  switch (e.type) {
+    case 'drone': { // hexàgon que gira
+      ctx.rotate(e.t * 2);
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        ctx.lineTo(Math.cos(a) * e.r, Math.sin(a) * e.r);
+      }
+      break;
+    }
+    case 'zigzag': // rombe
+      ctx.moveTo(0, -e.r); ctx.lineTo(e.r, 0); ctx.lineTo(0, e.r); ctx.lineTo(-e.r, 0);
+      break;
+    case 'diver': // triangle apuntant cap al jugador
+      ctx.rotate(e.dived ? Math.atan2(e.vy, e.vx) - Math.PI / 2 : 0);
+      ctx.moveTo(0, e.r); ctx.lineTo(e.r, -e.r); ctx.lineTo(-e.r, -e.r);
+      break;
+    case 'tank': // octàgon gran amb nucli
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+        ctx.lineTo(Math.cos(a) * e.r, Math.sin(a) * e.r);
+      }
+      break;
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  // Nucli brillant
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(0, 0, e.type === 'tank' ? 6 : 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 // ---------- Bucle principal ----------
 let last = performance.now();
 let gridDt = 0;
@@ -164,6 +324,8 @@ function update(dt) {
   gridDt = dt;
   updateStars(dt);
   updatePlayer(dt);
+  updateBullets(dt);
+  updateEnemies(dt);
 }
 
 function draw() {
@@ -171,6 +333,8 @@ function draw() {
   ctx.fillRect(0, 0, W, H);
   drawGrid(gridDt);
   drawStars();
+  enemies.forEach(drawEnemy);
+  drawBullets();
   drawShip(player.x, player.y, player.tilt);
 }
 
@@ -181,5 +345,9 @@ function loop(now) {
   draw();
   requestAnimationFrame(loop);
 }
+
+// En mode demo, ?warp=N simula N segons de joc abans de començar (útil per a captures)
+const WARP = DEMO ? Number(new URLSearchParams(location.search).get('warp')) || 0 : 0;
+for (let t = 0; t < WARP; t += 1 / 60) update(1 / 60);
 
 requestAnimationFrame(loop);
