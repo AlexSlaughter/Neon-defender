@@ -81,3 +81,21 @@ Ara `index.html?demo&warp=7` mostra el joc tal com estaria després de 7 segons.
 - `hitFlash` es prepara perquè l'enemic brilli en blanc quan rebi un impacte (s'utilitza al pas 4).
 
 **Captura:** `docs/captures/pas3.png`
+
+---
+
+## Pas 4 – Col·lisions, vides i puntuació
+
+**Funcionalitat implementada:** detecció de col·lisions (làser→enemic, dispar enemic→jugador i xoc directe), 3 vides, 2 segons d'invulnerabilitat (la nau parpelleja) després de rebre un cop, puntuació amb **multiplicador de combo** (x1 a x5), textos flotants "+100" en abatre un enemic, HUD amb la puntuació i les vides, i pantalla de *Game Over* amb `Enter` per tornar a jugar.
+
+**Prompt utilitzat:**
+> Implementa les col·lisions amb detecció cercle contra cercle: els làsers del jugador resten vida als enemics (que han de brillar en blanc un moment en rebre l'impacte) i en arribar a 0 moren i sumen punts; els dispars enemics i els xocs directes treuen una vida al jugador. El jugador té 3 vides i 2 segons d'invulnerabilitat després de cada cop, durant els quals la nau parpelleja. Afegeix un sistema de combo: cada 5 enemics seguits sense que passin 2 segons augmenta el multiplicador fins a x5. Mostra textos flotants amb els punts guanyats, un HUD amb la puntuació a l'esquerra i les vides com a naus petites a la dreta, i una pantalla de GAME OVER que permeti reiniciar amb Enter.
+
+**Decisions i característiques interessants:**
+- **Col·lisió cercle-cercle:** es compara la distància al quadrat amb `(r1 + r2)²`, evitant l'arrel quadrada (més ràpid). És suficientment precís per a formes neó petites.
+- La **invulnerabilitat temporal** evita perdre diverses vides de cop si toquen alhora un enemic i un dispar.
+- L'estat de la partida es concentra en un objecte `game` i la funció `resetGame()` torna tot a l'estat inicial; això facilita reiniciar i, més endavant, afegir menús.
+- El multiplicador de combo premia jugar de manera agressiva sense rebre cops.
+- En mode demo, el joc es reinicia sol 3 segons després del *Game Over*.
+
+**Captura:** `docs/captures/pas4.png`

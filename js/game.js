@@ -315,17 +315,154 @@ function drawEnemy(e) {
   ctx.restore();
 }
 
+// ---------- Estat de la partida ----------
+const game = {
+  state: 'playing', // 'playing' | 'gameover'
+  score: 0,
+  lives: 3,
+  invuln: 0,        // segons d'invulnerabilitat després de rebre un cop
+  combo: 0,         // enemics seguits abatuts sense rebre mal
+  comboTimer: 0,
+  stateTimer: 0,
+};
+const floatingTexts = []; // "+100" que apareixen en abatre enemics
+
+function resetGame() {
+  Object.assign(game, { state: 'playing', score: 0, lives: 3, invuln: 2, combo: 0, comboTimer: 0, stateTimer: 0 });
+  enemies.length = 0;
+  bullets.length = 0;
+  enemyBullets.length = 0;
+  floatingTexts.length = 0;
+  player.x = W / 2;
+  player.y = H - 80;
+  spawnTimer = 1;
+}
+
+// ---------- Col·lisions (cercle contra cercle) ----------
+const PLAYER_R = 14;
+const hit = (a, ar, b, br) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2 < (ar + br) ** 2;
+
+function addScore(points, x, y) {
+  game.combo++;
+  game.comboTimer = 2;
+  const mult = Math.min(1 + Math.floor(game.combo / 5), 5); // x1..x5 segons el combo
+  const total = points * mult;
+  game.score += total;
+  floatingTexts.push({ text: `+${total}`, x, y, life: 1, color: mult > 1 ? '#ffe02b' : '#ffffff' });
+}
+
+function killEnemy(index) {
+  const e = enemies[index];
+  addScore(e.score, e.x, e.y);
+  enemies.splice(index, 1);
+}
+
+function damagePlayer() {
+  if (game.invuln > 0) return;
+  game.lives--;
+  game.invuln = 2;
+  game.combo = 0;
+  if (game.lives <= 0) {
+    game.state = 'gameover';
+    game.stateTimer = 0;
+  }
+}
+
+function handleCollisions() {
+  // Dispars del jugador contra enemics
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      const e = enemies[j];
+      if (hit(b, b.r, e, e.r)) {
+        bullets.splice(i, 1);
+        e.hp--;
+        e.hitFlash = 0.08;
+        if (e.hp <= 0) killEnemy(j);
+        break;
+      }
+    }
+  }
+  // Dispars enemics contra el jugador
+  for (let i = enemyBullets.length - 1; i >= 0; i--) {
+    if (hit(enemyBullets[i], enemyBullets[i].r, player, PLAYER_R) && game.invuln <= 0) {
+      enemyBullets.splice(i, 1);
+      damagePlayer();
+    }
+  }
+  // Xoc directe entre enemic i jugador
+  for (let j = enemies.length - 1; j >= 0; j--) {
+    if (hit(enemies[j], enemies[j].r, player, PLAYER_R) && game.invuln <= 0) {
+      killEnemy(j);
+      damagePlayer();
+    }
+  }
+}
+
+function updateFloatingTexts(dt) {
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    const f = floatingTexts[i];
+    f.y -= 40 * dt;
+    f.life -= dt;
+    if (f.life <= 0) floatingTexts.splice(i, 1);
+  }
+}
+
+// ---------- HUD ----------
+function drawHUD() {
+  neonText(`PUNTS ${String(game.score).padStart(6, '0')}`, 20, 26, 20, '#00f0ff', 'left');
+  // Vides com a petites naus
+  for (let i = 0; i < game.lives; i++) {
+    ctx.save();
+    ctx.translate(W - 30 - i * 30, 26);
+    ctx.scale(0.5, 0.5);
+    drawShip(0, 0, 0, '#ff2bd6');
+    ctx.restore();
+  }
+  const mult = Math.min(1 + Math.floor(game.combo / 5), 5);
+  if (mult > 1) neonText(`COMBO x${mult}`, W / 2, 26, 20, '#ffe02b');
+
+  for (const f of floatingTexts) {
+    ctx.globalAlpha = Math.max(0, f.life);
+    neonText(f.text, f.x, f.y, 16, f.color);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(5, 1, 12, 0.6)';
+  ctx.fillRect(0, 0, W, H);
+  neonText('GAME OVER', W / 2, H / 2 - 30, 64, '#ff2bd6');
+  neonText(`Puntuació: ${game.score}`, W / 2, H / 2 + 30, 24, '#00f0ff');
+  if (Math.floor(game.stateTimer * 2) % 2 === 0) {
+    neonText('Prem ENTER per tornar a jugar', W / 2, H / 2 + 80, 18, '#c9b8ff');
+  }
+}
+
 // ---------- Bucle principal ----------
 let last = performance.now();
 let gridDt = 0;
 
 function update(dt) {
-  if (DEMO) demoPilot(dt);
   gridDt = dt;
   updateStars(dt);
+  game.stateTimer += dt;
+
+  if (game.state === 'gameover') {
+    if (keys.Enter || (DEMO && game.stateTimer > 3)) resetGame();
+    return;
+  }
+
+  if (DEMO) demoPilot(dt);
+  game.invuln = Math.max(0, game.invuln - dt);
+  game.comboTimer -= dt;
+  if (game.comboTimer <= 0) game.combo = 0;
+
   updatePlayer(dt);
   updateBullets(dt);
   updateEnemies(dt);
+  handleCollisions();
+  updateFloatingTexts(dt);
 }
 
 function draw() {
@@ -335,7 +472,12 @@ function draw() {
   drawStars();
   enemies.forEach(drawEnemy);
   drawBullets();
-  drawShip(player.x, player.y, player.tilt);
+  // La nau parpelleja mentre és invulnerable
+  if (game.state === 'playing' && (game.invuln <= 0 || Math.floor(game.invuln * 10) % 2 === 0)) {
+    drawShip(player.x, player.y, player.tilt);
+  }
+  drawHUD();
+  if (game.state === 'gameover') drawGameOver();
 }
 
 function loop(now) {
