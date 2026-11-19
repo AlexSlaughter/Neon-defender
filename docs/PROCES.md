@@ -217,3 +217,19 @@ Ara `index.html?demo&warp=7` mostra el joc tal com estaria després de 7 segons.
 | 6 | Pas 6: onades, power-ups i boss |
 | 7 | Pas 7: so, menús i rècord |
 | 8 | Pas 8: controls tàctils i poliment final |
+
+---
+
+## Annex – Pujar el projecte a GitLab
+
+El repositori local ja conté tots els commits. Per pujar-lo al GitLab local (AB01):
+
+1. A GitLab: **New project → Create blank project**, nom `neon-defender`, **sense** marcar "Initialize repository with a README" (el README ja existeix al repositori local).
+2. Des de la carpeta del projecte:
+
+```
+git remote add origin http://<servidor-gitlab>/<usuari>/neon-defender.git
+git push -u origin main
+```
+
+3. A GitLab, comprovar que apareixen els fitxers, el README renderitzat i l'historial amb els 8 commits (**Code → Commits**).
