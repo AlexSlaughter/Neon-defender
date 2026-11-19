@@ -18,7 +18,25 @@ Projecte de l'activitat **AB03 – Vibe Coding** (DAW2 · Optativa IA · Institu
 | `M` | Silenciar so |
 | `Enter` | Començar / tornar a jugar |
 
-En mòbil o tauleta: arrossega el dit per moure la nau (dispara automàticament).
+En mòbil o tauleta: arrossega el dit per moure la nau (dispara automàticament). També es pot jugar arrossegant amb el ratolí.
+
+### Característiques
+
+- 4 tipus d'enemics amb comportaments diferents i formacions en V
+- Onades progressives i un **boss** cada 5 onades amb 3 patrons d'atac i mode fúria
+- Power-ups: triple dispar, foc ràpid, escut i vida extra
+- Multiplicador de combo (fins a x5)
+- Partícules, ones expansives, tremolor de pantalla i flaixos
+- Música i efectes de so sintetitzats en temps real
+- Rècord desat al navegador
+
+### Mode demo
+
+| URL | Què fa |
+|---|---|
+| `index.html?demo` | Un pilot automàtic juga sol (mode "attract") |
+| `index.html?demo&wave=5` | Comença directament a l'onada del boss |
+| `index.html?demo&warp=10` | Simula 10 segons de joc abans de mostrar-lo (per fer captures) |
 
 ## 🛠️ Tecnologia
 

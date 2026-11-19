@@ -31,6 +31,44 @@ function onKeyPress(code) {
   }
 }
 
+// ---------- Controls tàctils i de ratolí ----------
+// Arrossegar mou la nau de manera relativa (el dit no tapa la nau) i mentre es toca, dispara.
+let touch = null;
+
+function toCanvas(e) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: (e.clientX - rect.left) * (W / rect.width), y: (e.clientY - rect.top) * (H / rect.height) };
+}
+
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  sfx.unlock();
+  if (game.state === 'menu' || (game.state === 'gameover' && game.stateTimer > 1)) { resetGame(); return; }
+  if (game.state === 'paused') { game.state = 'playing'; sfx.pauseMusic(false); return; }
+  if (game.state !== 'playing') return;
+  touch = { id: e.pointerId, ...toCanvas(e) };
+  canvas.setPointerCapture(e.pointerId);
+});
+
+canvas.addEventListener('pointermove', e => {
+  if (!touch || e.pointerId !== touch.id || game.state !== 'playing') return;
+  const p = toCanvas(e);
+  player.x = clamp(player.x + (p.x - touch.x) * 1.3, player.w / 2, W - player.w / 2);
+  player.y = clamp(player.y + (p.y - touch.y) * 1.3, H * 0.4, H - player.h / 2 - 4);
+  player.tilt = clamp((p.x - touch.x) * 0.05, -0.4, 0.4);
+  touch.x = p.x;
+  touch.y = p.y;
+});
+
+const endTouch = e => { if (touch && e.pointerId === touch.id) touch = null; };
+canvas.addEventListener('pointerup', endTouch);
+canvas.addEventListener('pointercancel', endTouch);
+
+// Pausa automàtica si l'usuari canvia de pestanya o minimitza
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && game.state === 'playing') { game.state = 'paused'; sfx.pauseMusic(true); }
+});
+
 // ---------- So amb Web Audio API (tot sintetitzat, sense fitxers) ----------
 const sfx = (() => {
   let ac = null, master = null, musicGain = null, muted = false, musicTimer = null, step = 0, musicPaused = false;
@@ -124,7 +162,7 @@ const sfx = (() => {
 })();
 
 // ---------- Utilitats ----------
-const isTouch = false; // els controls tàctils s'afegeixen al pas 8
+const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 const rand = (min, max) => Math.random() * (max - min) + min;
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
@@ -286,7 +324,7 @@ function playerShoot() {
 
 function updateBullets(dt) {
   fireCooldown -= dt;
-  if (keys.Space && fireCooldown <= 0 && game.state === 'playing') {
+  if ((keys.Space || touch) && fireCooldown <= 0 && game.state === 'playing') {
     playerShoot();
     fireCooldown = powers.rapid > 0 ? FIRE_RATE * 0.5 : FIRE_RATE;
   }
@@ -1023,14 +1061,14 @@ function drawMenu() {
     neonText(isTouch ? 'TOCA LA PANTALLA PER COMENÇAR' : 'PREM ENTER PER COMENÇAR', W / 2, 440, 24, '#ffffff');
   }
   neonText(`RÈCORD: ${highScore}`, W / 2, 490, 20, '#ffe02b');
-  neonText('Fletxes/WASD moure · Espai disparar · P pausa · M so', W / 2, 550, 14, '#c9b8ff');
+  neonText(isTouch ? 'Arrossega el dit per moure la nau · dispara sola' : 'Fletxes/WASD moure · Espai disparar · P pausa · M so', W / 2, 550, 14, '#c9b8ff');
 }
 
 function drawPause() {
   ctx.fillStyle = 'rgba(5, 1, 12, 0.55)';
   ctx.fillRect(0, 0, W, H);
   neonText('PAUSA', W / 2, H / 2 - 10, 64, '#00f0ff');
-  neonText('Prem P per continuar', W / 2, H / 2 + 50, 18, '#c9b8ff');
+  neonText(isTouch ? 'Toca per continuar' : 'Prem P per continuar', W / 2, H / 2 + 50, 18, '#c9b8ff');
 }
 
 // ---------- Bucle principal ----------

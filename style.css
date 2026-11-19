@@ -53,3 +53,18 @@ canvas {
   opacity: 0.7;
   text-align: center;
 }
+
+.help.mobile { display: none; }
+
+/* Dispositius tàctils: s'amaga l'ajuda de teclat */
+@media (hover: none) and (pointer: coarse) {
+  .help.desktop { display: none; }
+  .help.mobile { display: block; }
+}
+
+/* Pantalles estretes: menys espai entre lletres perquè el títol hi càpiga */
+@media (max-width: 520px) {
+  .title { letter-spacing: 0.12em; }
+}
+
+canvas { cursor: crosshair; user-select: none; -webkit-user-select: none; }

@@ -2,15 +2,19 @@
 <html lang="ca">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="description" content="Neon Defender: joc arcade d'acció espacial amb estètica neó fet amb HTML5 Canvas i JavaScript.">
+  <meta name="theme-color" content="#07020f">
   <title>Neon Defender</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath d='M20 3 L36 36 L25 30 L15 30 L4 36 Z' fill='%2307020f' stroke='%2300f0ff' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='20' cy='20' r='3.5' fill='%23ff2bd6'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main class="wrapper">
     <h1 class="title">NEON <span>DEFENDER</span></h1>
-    <canvas id="game" width="800" height="600"></canvas>
-    <p class="help">← → ↑ ↓ / WASD moure · ESPAI disparar · P pausa · M so</p>
+    <canvas id="game" width="800" height="600" aria-label="Pantalla del joc Neon Defender"></canvas>
+    <p class="help desktop">← → ↑ ↓ / WASD moure · ESPAI disparar · P pausa · M so</p>
+    <p class="help mobile">Arrossega el dit per moure la nau · dispara automàticament</p>
   </main>
   <script src="js/game.js"></script>
 </body>

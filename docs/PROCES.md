@@ -172,3 +172,48 @@ Ara `index.html?demo&warp=7` mostra el joc tal com estaria després de 7 segons.
 - La **màquina d'estats** (`menu`, `playing`, `paused`, `gameover`) fa que `update()` i `draw()` decideixin què fer segons l'estat, i és fàcil afegir-ne de nous.
 
 **Captura:** `docs/captures/pas7.png` (menú principal)
+
+---
+
+## Pas 8 – Controls tàctils i poliment final
+
+**Funcionalitat implementada:**
+- **Controls tàctils i de ratolí** amb Pointer Events: tocar la pantalla inicia la partida, arrossegar el dit mou la nau i, mentre el dit és a la pantalla, la nau dispara automàticament.
+- **Pausa automàtica** quan l'usuari canvia de pestanya o minimitza el navegador (`visibilitychange`).
+- Textos adaptats: en dispositius tàctils els missatges diuen "Toca la pantalla…" en lloc de "Prem ENTER…", i l'ajuda sota el canvas canvia amb una *media query* `(hover: none) and (pointer: coarse)`.
+- Icona (favicon) en SVG integrada a l'HTML, metadades (`description`, `theme-color`) i README amb la llista de característiques i del mode demo.
+
+**Prompt utilitzat:**
+> Fes que el joc es pugui jugar al mòbil. Usa Pointer Events sobre el canvas: tocar ha de començar la partida o reiniciar-la al game over, i arrossegar el dit ha de moure la nau de manera relativa (no que la nau salti sota el dit, perquè el dit la taparia) i disparar automàticament mentre es toca. Recorda convertir les coordenades de pantalla a coordenades del canvas perquè el canvas està escalat amb CSS. Posa el joc en pausa si l'usuari canvia de pestanya. Adapta els textos d'ajuda als dispositius tàctils, afegeix un favicon SVG en línia i actualitza el README.
+
+**Problemes trobats i solucions:**
+- El canvas té 800 px interns però al mòbil només en fa ~350 a la pantalla. Sense conversió, el moviment del dit no coincidia amb el de la nau. La funció `toCanvas()` usa `getBoundingClientRect()` per escalar les coordenades.
+- En una finestra estreta sense pantalla tàctil, el títol amb molt d'espai entre lletres podia desbordar. Es va afegir una *media query* `max-width: 520px`.
+- La captura en mida mòbil amb Edge *headless* sortia tallada (Edge té una amplada mínima de finestra), així que es va fer amb el navegador integrat emulant un mòbil de 360×740.
+
+**Verificació (navegador emulant un mòbil de 375×812):** `isTouch = true`; el canvas fa 351×263 px sense scroll horitzontal; un toc al menú comença la partida; arrossegar 50 px de pantalla mou la nau 148 px de canvas (50 × 800/351 × 1,3 de sensibilitat); mentre es toca, es dispara; en aixecar el dit, s'atura.
+
+**Captura:** `docs/captures/pas8.jpg` (versió mòbil)
+
+---
+
+## Conclusions
+
+- **Dividir en passos petits** ha estat clau: cada prompt tenia un objectiu concret i verificable, i cada commit deixa el joc en un estat funcional. Si un pas sortia malament, es podia tornar enrere amb `git`.
+- **Prompts específics funcionen millor:** quan el prompt deia exactament *què* calia (p. ex. "col·lisió cercle contra cercle", "fregament", "globalCompositeOperation lighter", "moviment relatiu per no tapar la nau amb el dit"), el codi generat era molt més encertat que amb peticions genèriques.
+- **La IA també s'equivoca:** el boss que no atacava (pas 6) i el reinici accidental amb Enter (pas 7) són errors de lògica que només es van detectar **provant el joc**. Cal revisar i provar sempre el codi generat; el *vibe coding* no substitueix entendre el codi.
+- **Eines de prova pròpies:** el mode `?demo`, `?wave=N` i `?warp=N`, i la simulació de fotogrames des de la consola, han permès provar parts del joc (com el boss) sense haver de jugar-hi manualment cada cop.
+- **Resultat:** un joc complet de ~1.150 línies de JavaScript, sense dependències, que funciona en ordinador i mòbil.
+
+## Historial de commits
+
+| Commit | Missatge |
+|---|---|
+| 1 | Pas 1: estructura base del projecte i README |
+| 2 | Pas 2: nau del jugador i fons d'estrelles |
+| 3 | Pas 3: dispars i enemics |
+| 4 | Pas 4: col·lisions, vides i puntuació |
+| 5 | Pas 5: partícules i efectes visuals |
+| 6 | Pas 6: onades, power-ups i boss |
+| 7 | Pas 7: so, menús i rècord |
+| 8 | Pas 8: controls tàctils i poliment final |
