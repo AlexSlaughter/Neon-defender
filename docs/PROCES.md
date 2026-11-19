@@ -143,3 +143,32 @@ Ara `index.html?demo&warp=7` mostra el joc tal com estaria després de 7 segons.
 - Per comprovar el combat sencer es va executar la simulació des de la consola del navegador (`update(1/60)` en un bucle de 7.200 iteracions = 2 minuts de joc) i registrar la vida del boss cada 10 segons. Així es va verificar que el boss mor i comença l'onada 6 amb dificultat 1,3.
 
 **Captures:** `docs/captures/pas6.png` (boss atacant), `docs/captures/pas6b.png` (rètol d'onada), `docs/captures/pas6c.png` (Game Over durant el combat amb el boss en mode fúria)
+
+---
+
+## Pas 7 – So, menús i rècord
+
+**Funcionalitat implementada:**
+- **So sintetitzat amb Web Audio API**, sense cap fitxer d'àudio: làser, explosions (soroll blanc filtrat), impacte al jugador, power-up (arpegi ascendent), escut trencat, alarma del boss, dispar del boss, melodia de Game Over i fanfàrria de nou rècord.
+- **Música de fons** synthwave: una línia de baix en bucle (La m – Fa – Do – Sol) amb un arpegi agut.
+- **Menú principal** amb un sol synthwave ratllat animat, el títol que flota, una llegenda dels enemics amb els seus punts i el rècord.
+- **Pausa** amb `P` o `Esc` (tot es congela, inclosa la música) i **silenci** amb `M`.
+- **Rècord** desat a `localStorage`; si el superes, apareix "★ NOU RÈCORD! ★" pulsant.
+
+**Prompt utilitzat:**
+> Afegeix so amb la Web Audio API sense fer servir fitxers: crea un objecte sfx amb funcions per al dispar, explosions petites i grans fetes amb soroll blanc filtrat, rebre un cop, agafar power-up, trencar l'escut, l'alarma i els dispars del boss, game over i nou rècord. Afegeix una música de fons synthwave senzilla amb una línia de baix en bucle. Converteix el joc en una màquina d'estats amb menú, jugant, pausa i game over: el menú ha de tenir un sol synthwave amb franges, el títol animat, els 4 enemics amb els seus punts i el rècord. P o Esc posen pausa, M silencia. Desa el rècord a localStorage i, si se supera, mostra NOU RÈCORD.
+
+**Problemes trobats i solucions:**
+1. **Els navegadors bloquegen l'àudio** fins que l'usuari interactua amb la pàgina. Per això l'`AudioContext` es crea dins de `sfx.unlock()`, que es crida a la primera tecla premuda.
+2. **Reinici accidental:** com que l'`Enter` es llegia contínuament, si el jugador moria mentre el premia, la partida es reiniciava a l'instant. Es van separar les **tecles d'una sola pulsació** (`onKeyPress`, ignorant `e.repeat`) de les tecles mantingudes (moviment i dispar), i el Game Over ignora l'Enter durant el primer segon.
+3. **Llegibilitat:** al menú el títol rosa es confonia amb el sol rosa. Es va demanar a la IA afegir un contorn fosc (`strokeText`) darrere del text.
+4. `localStorage` pot fallar en mode privat; les lectures i escriptures van dins de `try/catch` i el joc funciona igualment.
+
+**Verificació:** des de la consola del navegador es va simular la seqüència completa amb esdeveniments de teclat sintètics: menú → Enter → jugant → P (pausa: la puntuació no canvia) → P → mort → rècord desat a `localStorage` → Enter immediat ignorat → Enter al cap d'1 s reinicia → M silencia.
+
+**Decisions i característiques interessants:**
+- Tots els sons es generen amb **oscil·ladors** (`square`, `sawtooth`, `triangle`, `sine`) i **envolupants** (`exponentialRampToValueAtTime`): el joc no pesa res i funciona sense connexió.
+- Per no saturar l'àudio amb el triple dispar, el so del làser té un mínim de 60 ms entre reproduccions.
+- La **màquina d'estats** (`menu`, `playing`, `paused`, `gameover`) fa que `update()` i `draw()` decideixin què fer segons l'estat, i és fàcil afegir-ne de nous.
+
+**Captura:** `docs/captures/pas7.png` (menú principal)

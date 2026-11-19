@@ -13,10 +13,118 @@ const keys = {};
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  if (!e.repeat) onKeyPress(e.code);
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
+// Tecles d'una sola pulsació (no es repeteixen mentre es mantenen premudes)
+function onKeyPress(code) {
+  sfx.unlock(); // els navegadors només permeten àudio després d'una interacció
+  if (code === 'KeyM') sfx.toggleMute();
+  if (code === 'Enter' || code === 'Space') {
+    if (game.state === 'menu') resetGame();
+    else if (game.state === 'gameover' && game.stateTimer > 1) resetGame();
+  }
+  if (code === 'KeyP' || code === 'Escape') {
+    if (game.state === 'playing') { game.state = 'paused'; sfx.pauseMusic(true); }
+    else if (game.state === 'paused') { game.state = 'playing'; sfx.pauseMusic(false); }
+  }
+}
+
+// ---------- So amb Web Audio API (tot sintetitzat, sense fitxers) ----------
+const sfx = (() => {
+  let ac = null, master = null, musicGain = null, muted = false, musicTimer = null, step = 0, musicPaused = false;
+
+  function unlock() {
+    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    ac = new AC();
+    master = ac.createGain();
+    master.gain.value = muted ? 0 : 0.5;
+    master.connect(ac.destination);
+    musicGain = ac.createGain();
+    musicGain.gain.value = 0.18;
+    musicGain.connect(master);
+    startMusic();
+  }
+
+  // Un to amb envolupant i escombrat de freqüència
+  function tone(freq, endFreq, dur, type = 'square', vol = 0.3, dest = master) {
+    if (!ac) return;
+    const t = ac.currentTime;
+    const osc = ac.createOscillator();
+    const g = ac.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    osc.connect(g).connect(dest);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  }
+
+  // Soroll blanc filtrat per a les explosions
+  function noise(dur, vol = 0.4, cutoff = 1200) {
+    if (!ac) return;
+    const t = ac.currentTime;
+    const buf = ac.createBuffer(1, ac.sampleRate * dur, ac.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    const src = ac.createBufferSource();
+    src.buffer = buf;
+    const filter = ac.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(cutoff, t);
+    filter.frequency.exponentialRampToValueAtTime(60, t + dur);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    src.connect(filter).connect(g).connect(master);
+    src.start(t);
+  }
+
+  // Música: línia de baix synthwave en bucle (La menor - Fa - Do - Sol)
+  const BASS = [110, 110, 220, 110, 87.3, 87.3, 174.6, 87.3, 130.8, 130.8, 261.6, 130.8, 98, 98, 196, 98];
+  function startMusic() {
+    musicTimer = setInterval(() => {
+      if (musicPaused || muted || !ac) return;
+      const f = BASS[step % BASS.length];
+      tone(f, f * 0.98, 0.22, 'sawtooth', 0.5, musicGain);
+      if (step % 4 === 0) tone(f * 4, f * 4, 0.12, 'triangle', 0.25, musicGain); // arpegi agut
+      step++;
+    }, 200);
+  }
+
+  let lastShot = 0;
+  return {
+    unlock,
+    toggleMute() {
+      muted = !muted;
+      if (master) master.gain.value = muted ? 0 : 0.5;
+    },
+    get muted() { return muted; },
+    pauseMusic(p) { musicPaused = p; },
+    shoot() {
+      const now = performance.now();
+      if (now - lastShot < 60) return; // evita saturar amb el triple dispar
+      lastShot = now;
+      tone(880, 220, 0.09, 'square', 0.08);
+    },
+    explode(big) { noise(big ? 0.9 : 0.35, big ? 0.6 : 0.3, big ? 2000 : 1200); if (big) tone(120, 30, 0.6, 'sine', 0.5); },
+    playerHit() { tone(300, 40, 0.5, 'sawtooth', 0.3); },
+    powerup() { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, f, 0.1, 'triangle', 0.25), i * 60)); },
+    shieldBreak() { tone(1200, 200, 0.3, 'triangle', 0.25); },
+    bossShot() { tone(200, 80, 0.25, 'sawtooth', 0.15); },
+    alarm() { [0, 1, 2].forEach(i => setTimeout(() => tone(440, 330, 0.3, 'square', 0.2), i * 400)); },
+    gameOver() { [392, 330, 262, 196].forEach((f, i) => setTimeout(() => tone(f, f * 0.97, 0.3, 'triangle', 0.3), i * 220)); },
+    record() { [523, 659, 784, 1046, 1318].forEach((f, i) => setTimeout(() => tone(f, f, 0.15, 'square', 0.15), i * 90)); },
+  };
+})();
+
 // ---------- Utilitats ----------
+const isTouch = false; // els controls tàctils s'afegeixen al pas 8
 const rand = (min, max) => Math.random() * (max - min) + min;
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
@@ -173,7 +281,7 @@ function playerShoot() {
     bullets.push({ x: player.x - 8, y: player.y - 12, vx: -170, vy: -700, r: 3, color: '#3bff8a' });
     bullets.push({ x: player.x + 8, y: player.y - 12, vx: 170, vy: -700, r: 3, color: '#3bff8a' });
   }
-  if (typeof sfx !== 'undefined') sfx.shoot();
+  sfx.shoot();
 }
 
 function updateBullets(dt) {
@@ -332,7 +440,7 @@ function applyPowerup(type) {
   if (type === 'life') game.lives = Math.min(game.lives + 1, 5);
   floatingTexts.push({ text: def.label, x: player.x, y: player.y - 40, life: 1.4, color: def.color });
   spawnParticles(player.x, player.y, def.color, 25, 200, 0.6, 3);
-  if (typeof sfx !== 'undefined') sfx.powerup();
+  sfx.powerup();
 }
 
 function drawPowerups() {
@@ -363,7 +471,7 @@ function spawnBoss() {
   const hp = 80 + Math.round((difficulty - 1) / 0.3) * 40;
   boss = { x: W / 2, y: -90, targetY: 120, r: 54, hp, maxHp: hp, t: 0, attackTimer: 1.5, pattern: 0, hitFlash: 0, enraged: false, entering: true };
   floatingTexts.push({ text: '⚠ ALERTA: BOSS ⚠', x: W / 2, y: H / 2 - 40, life: 2.5, color: '#ff3b6b', size: 36 });
-  if (typeof sfx !== 'undefined') sfx.alarm();
+  sfx.alarm();
 }
 
 function updateBoss(dt) {
@@ -410,7 +518,7 @@ function updateBoss(dt) {
       if (b.enraged) spawnEnemy('diver', b.x, b.y + 40);
     }
     b.attackTimer = b.enraged ? 1.1 : 1.8;
-    if (typeof sfx !== 'undefined') sfx.bossShot();
+    sfx.bossShot();
   }
 }
 
@@ -602,6 +710,7 @@ function explode(x, y, color, big = false) {
   shockwaves.push({ x, y, r: 4, maxR: big ? 140 : 55, life: 1, color });
   shake = Math.max(shake, big ? 16 : 5);
   if (big) flash = 0.5;
+  sfx.explode(big);
 }
 
 function updateEffects(dt) {
@@ -655,7 +764,8 @@ function drawEffects() {
 
 // ---------- Estat de la partida ----------
 const game = {
-  state: 'playing', // 'playing' | 'gameover'
+  state: 'menu',    // 'menu' | 'playing' | 'paused' | 'gameover'
+  newRecord: false,
   score: 0,
   lives: 3,
   invuln: 0,        // segons d'invulnerabilitat després de rebre un cop
@@ -666,7 +776,8 @@ const game = {
 const floatingTexts = []; // "+100" que apareixen en abatre enemics
 
 function resetGame() {
-  Object.assign(game, { state: 'playing', score: 0, lives: 3, invuln: 2, combo: 0, comboTimer: 0, stateTimer: 0 });
+  Object.assign(game, { state: 'playing', score: 0, lives: 3, invuln: 2, combo: 0, comboTimer: 0, stateTimer: 0, newRecord: false });
+  sfx.pauseMusic(false);
   enemies.length = 0;
   bullets.length = 0;
   enemyBullets.length = 0;
@@ -710,17 +821,36 @@ function damagePlayer() {
     powers.shield = false;
     game.invuln = 1;
     shockwaves.push({ x: player.x, y: player.y, r: 4, maxR: 90, life: 1, color: '#2b9bff' });
-    if (typeof sfx !== 'undefined') sfx.shieldBreak();
+    sfx.shieldBreak();
     return;
   }
   game.lives--;
   game.invuln = 2;
   game.combo = 0;
   explode(player.x, player.y, '#00f0ff', true);
-  if (game.lives <= 0) {
-    game.state = 'gameover';
-    game.stateTimer = 0;
+  sfx.playerHit();
+  if (game.lives <= 0) endGame();
+}
+
+// ---------- Rècord (localStorage) ----------
+function loadHighScore() {
+  try { return Number(localStorage.getItem('neonDefenderRecord')) || 0; } catch { return 0; }
+}
+function saveHighScore(v) {
+  try { localStorage.setItem('neonDefenderRecord', String(v)); } catch { /* mode privat: s'ignora */ }
+}
+let highScore = loadHighScore();
+
+function endGame() {
+  game.state = 'gameover';
+  game.stateTimer = 0;
+  game.newRecord = game.score > highScore && !DEMO;
+  if (game.newRecord) {
+    highScore = game.score;
+    saveHighScore(highScore);
+    setTimeout(() => sfx.record(), 900);
   }
+  sfx.gameOver();
 }
 
 function handleCollisions() {
@@ -801,6 +931,7 @@ function drawHUD() {
     }
   }
   if (powers.shield) neonText('ESCUT', px, H - 22, 16, POWERUPS.shield.color, 'right');
+  neonText(`RÈCORD ${highScore}`, W / 2, H - 22, 14, '#ffe02b88');
 
   if (wave.banner > 0) {
     ctx.globalAlpha = Math.min(1, wave.banner);
@@ -827,11 +958,79 @@ function drawShield() {
 function drawGameOver() {
   ctx.fillStyle = 'rgba(5, 1, 12, 0.6)';
   ctx.fillRect(0, 0, W, H);
-  neonText('GAME OVER', W / 2, H / 2 - 30, 64, '#ff2bd6');
-  neonText(`Puntuació: ${game.score}`, W / 2, H / 2 + 30, 24, '#00f0ff');
-  if (Math.floor(game.stateTimer * 2) % 2 === 0) {
-    neonText('Prem ENTER per tornar a jugar', W / 2, H / 2 + 80, 18, '#c9b8ff');
+  neonText('GAME OVER', W / 2, H / 2 - 50, 64, '#ff2bd6');
+  neonText(`Puntuació: ${game.score}   ·   Onada: ${wave.n}`, W / 2, H / 2 + 10, 22, '#00f0ff');
+  if (game.newRecord) {
+    const s = 1 + Math.sin(game.stateTimer * 6) * 0.08;
+    ctx.save();
+    ctx.translate(W / 2, H / 2 + 50);
+    ctx.scale(s, s);
+    neonText('★ NOU RÈCORD! ★', 0, 0, 28, '#ffe02b');
+    ctx.restore();
+  } else {
+    neonText(`Rècord: ${highScore}`, W / 2, H / 2 + 50, 18, '#ffe02b');
   }
+  if (game.stateTimer > 1 && Math.floor(game.stateTimer * 2) % 2 === 0) {
+    neonText(isTouch ? 'Toca la pantalla per tornar a jugar' : 'Prem ENTER per tornar a jugar', W / 2, H / 2 + 100, 18, '#c9b8ff');
+  }
+}
+
+// ---------- Menú principal ----------
+function drawMenu() {
+  const t = game.stateTimer;
+  // Sol synthwave darrere el títol
+  ctx.save();
+  const grad = ctx.createLinearGradient(0, 110, 0, 290);
+  grad.addColorStop(0, '#ffe02b');
+  grad.addColorStop(1, '#ff2bd6');
+  ctx.fillStyle = grad;
+  ctx.globalAlpha = 0.85;
+  ctx.shadowColor = '#ff2bd6';
+  ctx.shadowBlur = 40;
+  ctx.beginPath();
+  ctx.arc(W / 2, 200, 90, 0, Math.PI * 2);
+  ctx.fill();
+  // Franges horitzontals retallades al sol
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.shadowBlur = 0;
+  for (let i = 0; i < 6; i++) ctx.fillRect(W / 2 - 100, 215 + i * 12 + (t * 10) % 12, 200, 2 + i * 1.2);
+  ctx.restore();
+
+  const bob = Math.sin(t * 2) * 4;
+  // Contorn fosc perquè el títol es llegeixi sobre el sol
+  ctx.save();
+  ctx.font = 'bold 72px "Courier New", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 10;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#1a0533';
+  ctx.strokeText('NEON', W / 2, 150 + bob);
+  ctx.strokeText('DEFENDER', W / 2, 225 + bob);
+  ctx.restore();
+  neonText('NEON', W / 2, 150 + bob, 72, '#00f0ff');
+  neonText('DEFENDER', W / 2, 225 + bob, 72, '#ff4fe0');
+
+  // Llegenda d'enemics
+  const types = Object.keys(ENEMY_TYPES);
+  types.forEach((type, i) => {
+    const x = W / 2 - 225 + i * 150;
+    drawEnemy({ type, x, y: 330, r: ENEMY_TYPES[type].r, color: ENEMY_TYPES[type].color, t, hitFlash: 0, dived: false });
+    neonText(`${ENEMY_TYPES[type].score} pts`, x, 372, 14, ENEMY_TYPES[type].color);
+  });
+
+  if (Math.floor(t * 2) % 2 === 0) {
+    neonText(isTouch ? 'TOCA LA PANTALLA PER COMENÇAR' : 'PREM ENTER PER COMENÇAR', W / 2, 440, 24, '#ffffff');
+  }
+  neonText(`RÈCORD: ${highScore}`, W / 2, 490, 20, '#ffe02b');
+  neonText('Fletxes/WASD moure · Espai disparar · P pausa · M so', W / 2, 550, 14, '#c9b8ff');
+}
+
+function drawPause() {
+  ctx.fillStyle = 'rgba(5, 1, 12, 0.55)';
+  ctx.fillRect(0, 0, W, H);
+  neonText('PAUSA', W / 2, H / 2 - 10, 64, '#00f0ff');
+  neonText('Prem P per continuar', W / 2, H / 2 + 50, 18, '#c9b8ff');
 }
 
 // ---------- Bucle principal ----------
@@ -839,13 +1038,15 @@ let last = performance.now();
 let gridDt = 0;
 
 function update(dt) {
+  game.stateTimer += dt;
+  if (game.state === 'paused') { gridDt = 0; return; } // tot congelat
   gridDt = dt;
   updateStars(dt);
   updateEffects(dt);
-  game.stateTimer += dt;
 
+  if (game.state === 'menu') return;
   if (game.state === 'gameover') {
-    if (keys.Enter || (DEMO && game.stateTimer > 3)) resetGame();
+    if (DEMO && game.stateTimer > 3) resetGame();
     return;
   }
 
@@ -868,6 +1069,13 @@ function draw() {
   ctx.fillStyle = '#05010c';
   ctx.fillRect(0, 0, W, H);
 
+  if (game.state === 'menu') {
+    drawGrid(gridDt);
+    drawStars();
+    drawMenu();
+    return;
+  }
+
   // Tremolor de pantalla: desplacem tot el món una quantitat aleatòria
   ctx.save();
   if (shake > 0) ctx.translate(rand(-shake, shake), rand(-shake, shake));
@@ -878,7 +1086,7 @@ function draw() {
   drawPowerups();
   drawBullets();
   // La nau parpelleja mentre és invulnerable
-  if (game.state === 'playing' && (game.invuln <= 0 || Math.floor(game.invuln * 10) % 2 === 0)) {
+  if ((game.state === 'playing' || game.state === 'paused') && (game.invuln <= 0 || Math.floor(game.invuln * 10) % 2 === 0)) {
     drawShip(player.x, player.y, player.tilt);
   }
   drawShield();
@@ -890,7 +1098,9 @@ function draw() {
     ctx.fillRect(0, 0, W, H);
   }
   drawHUD();
+  if (sfx.muted) neonText('🔇', W - 20, H - 50, 16, '#c9b8ff', 'right');
   if (game.state === 'gameover') drawGameOver();
+  if (game.state === 'paused') drawPause();
 }
 
 function loop(now) {
@@ -903,6 +1113,7 @@ function loop(now) {
 
 // En mode demo, ?wave=N comença directament a l'onada N (per provar el boss: ?demo&wave=5)
 startWave(DEMO ? Number(new URLSearchParams(location.search).get('wave')) || 1 : 1);
+if (DEMO) game.state = 'playing'; // el mode demo salta el menú
 
 // En mode demo, ?warp=N simula N segons de joc abans de començar (útil per a captures)
 const WARP = DEMO ? Number(new URLSearchParams(location.search).get('warp')) || 0 : 0;
