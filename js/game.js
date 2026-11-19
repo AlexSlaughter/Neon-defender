@@ -315,6 +315,80 @@ function drawEnemy(e) {
   ctx.restore();
 }
 
+// ---------- Partícules i efectes visuals ----------
+const particles = [];
+const shockwaves = [];
+let shake = 0;     // intensitat del tremolor de pantalla
+let flash = 0;     // flaix blanc a tota la pantalla
+
+function spawnParticles(x, y, color, count, speed = 220, life = 0.7, size = 3) {
+  for (let i = 0; i < count; i++) {
+    const a = rand(0, Math.PI * 2);
+    const s = rand(speed * 0.2, speed);
+    particles.push({
+      x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+      life: rand(life * 0.5, life), maxLife: life, color, size: rand(size * 0.5, size),
+    });
+  }
+}
+
+function explode(x, y, color, big = false) {
+  spawnParticles(x, y, color, big ? 70 : 28, big ? 380 : 240, big ? 1.1 : 0.7, big ? 4 : 3);
+  spawnParticles(x, y, '#ffffff', big ? 20 : 8, 120, 0.4, 2);
+  shockwaves.push({ x, y, r: 4, maxR: big ? 140 : 55, life: 1, color });
+  shake = Math.max(shake, big ? 16 : 5);
+  if (big) flash = 0.5;
+}
+
+function updateEffects(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 1 - 2.5 * dt; // fregament
+    p.vy *= 1 - 2.5 * dt;
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+  for (let i = shockwaves.length - 1; i >= 0; i--) {
+    const s = shockwaves[i];
+    s.life -= dt * 2.5;
+    s.r = s.maxR * (1 - s.life);
+    if (s.life <= 0) shockwaves.splice(i, 1);
+  }
+  shake = Math.max(0, shake - dt * 40);
+  flash = Math.max(0, flash - dt * 2);
+
+  // Estela del motor de la nau
+  if (game.state === 'playing') {
+    particles.push({
+      x: player.x + rand(-3, 3), y: player.y + 18, vx: rand(-15, 15), vy: rand(120, 200),
+      life: 0.3, maxLife: 0.3, color: Math.random() < 0.5 ? '#ff9a2b' : '#ff2bd6', size: rand(1.5, 3),
+    });
+  }
+}
+
+function drawEffects() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter'; // els colors se sumen: aspecte lluminós
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  }
+  for (const s of shockwaves) {
+    ctx.globalAlpha = Math.max(0, s.life);
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 3 * s.life + 1;
+    ctx.shadowColor = s.color;
+    ctx.shadowBlur = 20;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 // ---------- Estat de la partida ----------
 const game = {
   state: 'playing', // 'playing' | 'gameover'
@@ -333,6 +407,8 @@ function resetGame() {
   bullets.length = 0;
   enemyBullets.length = 0;
   floatingTexts.length = 0;
+  particles.length = 0;
+  shockwaves.length = 0;
   player.x = W / 2;
   player.y = H - 80;
   spawnTimer = 1;
@@ -354,6 +430,7 @@ function addScore(points, x, y) {
 function killEnemy(index) {
   const e = enemies[index];
   addScore(e.score, e.x, e.y);
+  explode(e.x, e.y, e.color, e.type === 'tank');
   enemies.splice(index, 1);
 }
 
@@ -362,6 +439,7 @@ function damagePlayer() {
   game.lives--;
   game.invuln = 2;
   game.combo = 0;
+  explode(player.x, player.y, '#00f0ff', true);
   if (game.lives <= 0) {
     game.state = 'gameover';
     game.stateTimer = 0;
@@ -378,6 +456,7 @@ function handleCollisions() {
         bullets.splice(i, 1);
         e.hp--;
         e.hitFlash = 0.08;
+        spawnParticles(b.x, b.y, '#9ff8ff', 5, 150, 0.25, 2); // espurnes d'impacte
         if (e.hp <= 0) killEnemy(j);
         break;
       }
@@ -446,6 +525,7 @@ let gridDt = 0;
 function update(dt) {
   gridDt = dt;
   updateStars(dt);
+  updateEffects(dt);
   game.stateTimer += dt;
 
   if (game.state === 'gameover') {
@@ -468,6 +548,10 @@ function update(dt) {
 function draw() {
   ctx.fillStyle = '#05010c';
   ctx.fillRect(0, 0, W, H);
+
+  // Tremolor de pantalla: desplacem tot el món una quantitat aleatòria
+  ctx.save();
+  if (shake > 0) ctx.translate(rand(-shake, shake), rand(-shake, shake));
   drawGrid(gridDt);
   drawStars();
   enemies.forEach(drawEnemy);
@@ -475,6 +559,13 @@ function draw() {
   // La nau parpelleja mentre és invulnerable
   if (game.state === 'playing' && (game.invuln <= 0 || Math.floor(game.invuln * 10) % 2 === 0)) {
     drawShip(player.x, player.y, player.tilt);
+  }
+  drawEffects();
+  ctx.restore();
+
+  if (flash > 0) {
+    ctx.fillStyle = `rgba(255, 255, 255, ${flash * 0.5})`;
+    ctx.fillRect(0, 0, W, H);
   }
   drawHUD();
   if (game.state === 'gameover') drawGameOver();

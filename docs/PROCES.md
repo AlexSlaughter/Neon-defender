@@ -99,3 +99,21 @@ Ara `index.html?demo&warp=7` mostra el joc tal com estaria després de 7 segons.
 - En mode demo, el joc es reinicia sol 3 segons després del *Game Over*.
 
 **Captura:** `docs/captures/pas4.png`
+
+---
+
+## Pas 5 – Partícules i efectes visuals
+
+**Funcionalitat implementada:** sistema de partícules: explosions de colors en destruir enemics, espurnes en cada impacte de làser, **ones expansives** (anells que creixen i s'esvaeixen), **tremolor de pantalla** (*screen shake*) proporcional a l'explosió, flaix blanc quan el jugador rep un cop i una estela de foc que surt del motor de la nau.
+
+**Prompt utilitzat:**
+> Fes el joc molt més espectacular visualment. Crea un sistema de partícules genèric: quan mor un enemic ha d'explotar en partícules del seu color amb fregament perquè frenin, més una ona expansiva en forma d'anell neó. Les explosions grans (tank i quan el jugador rep un cop) han de tenir més partícules, un tremolor de pantalla i un flaix blanc. Afegeix espurnes petites quan un làser impacta i una estela de partícules taronja i rosa sortint del motor de la nau. Usa globalCompositeOperation 'lighter' perquè els colors brillin en superposar-se.
+
+**Decisions i característiques interessants:**
+- Una sola funció `spawnParticles()` serveix per a explosions, espurnes i estela: canviant nombre, velocitat, vida i mida s'obtenen efectes molt diferents.
+- **Fregament:** la velocitat de cada partícula es multiplica per `(1 - 2.5·dt)` a cada fotograma, de manera que l'explosió és ràpida al principi i després es frena, com a la vida real.
+- **`globalCompositeOperation = 'lighter'`**: els colors de les partícules se sumen quan se superposen i produeixen un efecte lluminós típic de l'estètica neó.
+- El **screen shake** es fa amb un simple `ctx.translate()` aleatori abans de dibuixar el món; l'HUD es dibuixa després perquè no tremoli i es pugui llegir.
+- Aquests efectes (*game feel* o *juice*) no canvien la jugabilitat però fan que el joc sigui molt més satisfactori.
+
+**Captura:** `docs/captures/pas5.png`
